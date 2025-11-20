@@ -1,24 +1,41 @@
-import { useEffect, useState } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
 
-function App() {
-  const [mensagem, setMensagem] = useState("Carregando...");
+import AppLayout from "./layouts/AppLayout";
+import AdminLayout from "./layouts/AdminLayout";
 
-  useEffect(() => {
-    fetch("http://localhost:3000/ping")
-      .then((res) => res.json())
-      .then((data) => setMensagem(data.message))
-      .catch((err) => {
-        console.error(err);
-        setMensagem("Erro ao conectar com a API");
-      });
-  }, []);
+import Home from "./pages/Home";
+import NoticiaDetalhe from "./pages/NoticiaDetalhe";
+import Vereadores from "./pages/Vereadores";
+import VereadorDetalhe from "./pages/VereadorDetalhe";
+import Leis from "./pages/Leis";
+import Propostas from "./pages/Propostas";
+import TvCamara from "./pages/TvCamara";
+
+import AdminLogin from "./pages/admin/AdminLogin";
+import AdminNoticias from "./pages/admin/AdminNoticias";
+
+export default function App() {
+  const { pathname } = useLocation();
+  const isAdmin = pathname.startsWith("/admin");
+
+  const Layout = isAdmin ? AdminLayout : AppLayout;
 
   return (
-    <div style={{ padding: 24, fontFamily: "sans-serif" }}>
-      <h1>App da Câmara - MVP</h1>
-      <p>Resposta do backend: {mensagem}</p>
-    </div>
+    <Layout>
+      <Routes>
+        {/* APP */}
+        <Route path="/" element={<Home />} />
+        <Route path="/noticia/:id" element={<NoticiaDetalhe />} />
+        <Route path="/vereadores" element={<Vereadores />} />
+        <Route path="/vereador/:id" element={<VereadorDetalhe />} />
+        <Route path="/leis" element={<Leis />} />
+        <Route path="/propostas" element={<Propostas />} />
+        <Route path="/tv" element={<TvCamara />} />
+
+        {/* ADMIN */}
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route path="/admin/noticias" element={<AdminNoticias />} />
+      </Routes>
+    </Layout>
   );
 }
-
-export default App;

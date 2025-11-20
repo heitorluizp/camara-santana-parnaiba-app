@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Camara Santana de Parnaiba</string>
+    <string name="title_activity_main">Camara Santana de Parnaiba</string>
+    <string name="package_name">com.santanaparnaiba.camara</string>
+    <string name="custom_url_scheme">com.santanaparnaiba.camara</string>
+</resources>

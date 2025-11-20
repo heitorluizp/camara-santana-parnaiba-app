@@ -5,7 +5,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// --- MOCK DE DADOS (depois a gente joga pra banco) ---
+// --- MOCK DE DADOS ---
 
 let noticias = [
   {
@@ -45,7 +45,44 @@ let vereadores = [
   }
 ];
 
-let mensagens = []; // aqui vamos só empilhar as mensagens recebidas
+let leis = [
+  {
+    id: 1,
+    numero: "1234",
+    ano: 2024,
+    titulo: "Lei de Transparência Municipal",
+    ementa: "Dispõe sobre a transparência dos atos da administração pública.",
+  },
+  {
+    id: 2,
+    numero: "5678",
+    ano: 2023,
+    titulo: "Lei de Acesso à Informação",
+    ementa: "Regulamenta o acesso às informações públicas.",
+  },
+];
+
+let propostas = [
+  {
+    id: 1,
+    tipo: "Projeto de Lei",
+    numero: "001",
+    ano: 2025,
+    autor: "Vereador João Silva",
+    titulo: "Projeto de Lei para criação de parque municipal",
+  },
+  {
+    id: 2,
+    tipo: "Requerimento",
+    numero: "015",
+    ano: 2025,
+    autor: "Vereadora Maria Souza",
+    titulo: "Requerimento de informações sobre obras em andamento",
+  },
+];
+
+
+let mensagens = [];
 
 // --- ROTAS ---
 
@@ -105,6 +142,36 @@ app.post("/vereadores/:id/mensagens", (req, res) => {
 
   res.status(201).json({ ok: true });
 });
+
+// leis (com filtro simples por query string ?q=)
+app.get("/leis", (req, res) => {
+  const q = (req.query.q || "").toLowerCase();
+  if (!q) return res.json(leis);
+  const filtradas = leis.filter(
+    (l) =>
+      l.numero.includes(q) ||
+      String(l.ano).includes(q) ||
+      l.titulo.toLowerCase().includes(q) ||
+      l.ementa.toLowerCase().includes(q)
+  );
+  res.json(filtradas);
+});
+
+// propostas (?q=)
+app.get("/propostas", (req, res) => {
+  const q = (req.query.q || "").toLowerCase();
+  if (!q) return res.json(propostas);
+  const filtradas = propostas.filter(
+    (p) =>
+      p.tipo.toLowerCase().includes(q) ||
+      p.numero.includes(q) ||
+      String(p.ano).includes(q) ||
+      p.autor.toLowerCase().includes(q) ||
+      p.titulo.toLowerCase().includes(q)
+  );
+  res.json(filtradas);
+});
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
