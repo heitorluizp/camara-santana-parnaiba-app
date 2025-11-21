@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-const API = "http://localhost:3000";
+const API = "http://localhost:3000/api";
 
 function Vereadores() {
   const [vereadores, setVereadores] = useState([]);

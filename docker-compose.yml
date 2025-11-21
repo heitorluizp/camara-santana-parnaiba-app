@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: camara_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: camara_db
+      MYSQL_USER: camara_user
+      MYSQL_PASSWORD: camara_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - camara_network
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  backend:
+    build: ./backend
+    container_name: camara_backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=camara_db
+      - DB_USER=camara_user
+      - DB_PASSWORD=camara_password
+      - JWT_SECRET=seu_jwt_secret_super_seguro_mude_em_producao_2024
+      - BCRYPT_ROUNDS=12
+    depends_on:
+      - mysql
+    networks:
+      - camara_network
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+
+networks:
+  camara_network:
+    driver: bridge

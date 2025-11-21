@@ -2,6 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 
 const items = [
   { to: "/admin/noticias", label: "Notícias" },
+  { to: "/admin/usuarios", label: "Usuários" },
   // Futuro: { to: "/admin/mensagens", label: "Mensagens" },
   // Futuro: { to: "/admin/leis", label: "Leis" },
 ];

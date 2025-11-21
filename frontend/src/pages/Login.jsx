@@ -3,17 +3,62 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 function Login() {
-  const { login } = useAuth();
+  const { login, register } = useAuth();
   const navigate = useNavigate();
 
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [isRegister, setIsRegister] = useState(false);
+  const [formData, setFormData] = useState({
+    nome: "",
+    email: "",
+    senha: "",
+    telefone: ""
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  function handleSubmit(e) {
+  function handleInputChange(e) {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault();
-    if (!name.trim() || !email.trim()) return;
-    login(name.trim(), email.trim());
-    navigate("/");
+    if (loading) return;
+
+    if (!formData.email.trim() || !formData.senha.trim()) {
+      setError("Email e senha são obrigatórios");
+      return;
+    }
+
+    if (isRegister && !formData.nome.trim()) {
+      setError("Nome é obrigatório");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      let result;
+      if (isRegister) {
+        result = await register(formData.nome, formData.email, formData.senha, formData.telefone);
+      } else {
+        result = await login(formData.email, formData.senha);
+      }
+
+      if (result.success) {
+        navigate("/");
+      } else {
+        setError(result.error);
+      }
+    } catch (err) {
+      setError("Erro inesperado. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -52,41 +97,108 @@ function Login() {
         </div>
       </div>
 
-      <h2 style={{ fontSize: 22, marginBottom: 16 }}>Entrar</h2>
+      <h2 style={{ fontSize: 22, marginBottom: 16 }}>
+        {isRegister ? "Criar Conta" : "Entrar"}
+      </h2>
+
+      {error && (
+        <div style={{
+          backgroundColor: "#fef2f2",
+          border: "1px solid #fca5a5",
+          color: "#dc2626",
+          padding: "8px 12px",
+          borderRadius: 6,
+          fontSize: 14,
+          marginBottom: 16
+        }}>
+          {error}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} style={{ display: "grid", gap: 14 }}>
-        <input
-          placeholder="Seu nome"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          style={inputStyle}
-        />
+        {isRegister && (
+          <input
+            name="nome"
+            placeholder="Seu nome completo"
+            value={formData.nome}
+            onChange={handleInputChange}
+            style={inputStyle}
+            required
+          />
+        )}
 
         <input
+          name="email"
           placeholder="Seu e-mail"
           type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          value={formData.email}
+          onChange={handleInputChange}
           style={inputStyle}
+          required
         />
 
-        <button style={buttonStyle}>
-          Entrar
+        <input
+          name="senha"
+          placeholder="Sua senha"
+          type="password"
+          value={formData.senha}
+          onChange={handleInputChange}
+          style={inputStyle}
+          required
+        />
+
+        {isRegister && (
+          <input
+            name="telefone"
+            placeholder="Seu telefone (opcional)"
+            type="tel"
+            value={formData.telefone}
+            onChange={handleInputChange}
+            style={inputStyle}
+          />
+        )}
+
+        <button 
+          type="submit" 
+          style={{
+            ...buttonStyle,
+            opacity: loading ? 0.7 : 1,
+            cursor: loading ? "not-allowed" : "pointer"
+          }}
+          disabled={loading}
+        >
+          {loading ? "Aguarde..." : (isRegister ? "Criar Conta" : "Entrar")}
         </button>
       </form>
 
-      {/* Criar conta */}
+      {/* Toggle entre login e cadastro */}
       <div style={{ marginTop: 16, textAlign: "center" }}>
-        <a
-          href="/cadastro"
+        <button
+          type="button"
+          onClick={() => {
+            setIsRegister(!isRegister);
+            setError("");
+            setFormData({
+              nome: "",
+              email: "",
+              senha: "",
+              telefone: ""
+            });
+          }}
           style={{
+            background: "none",
+            border: "none",
             fontSize: 14,
             color: "#2563eb",
-            textDecoration: "none",
+            textDecoration: "underline",
+            cursor: "pointer"
           }}
         >
-          Não sou registrado — criar conta
-        </a>
+          {isRegister 
+            ? "Já tenho conta — fazer login" 
+            : "Não sou registrado — criar conta"
+          }
+        </button>
       </div>
     </div>
   );

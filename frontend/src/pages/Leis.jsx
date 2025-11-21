@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const API = "http://localhost:3000";
+const API = "http://localhost:3000/api";
 
 function Leis() {
   const [leis, setLeis] = useState([]);

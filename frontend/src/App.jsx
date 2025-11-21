@@ -1,4 +1,4 @@
-import { Routes, Route, useLocation } from "react-router-dom";
+import { Routes, Route, useLocation, Link } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 
 import Login from "./pages/Login";
@@ -17,9 +17,9 @@ import OrdemDoDia from "./pages/OrdemDoDia";
 
 import AdminLogin from "./pages/admin/AdminLogin";
 import AdminNoticias from "./pages/admin/AdminNoticias";
+import AdminUsuarios from "./pages/admin/AdminUsuarios";
 import Perfil from "./pages/Perfil";
-import MinhasConversas from "./pages/MinhasConversas";
-import Cadastro from "./pages/Cadastro";
+import Chat from "./pages/Chat";
 
 
 
@@ -27,6 +27,51 @@ import Cadastro from "./pages/Cadastro";
 function PrivateRoute({ children }) {
   const { user } = useAuth();
   if (!user) return <Login />;
+  return children;
+}
+
+function AdminRoute({ children }) {
+  const { user } = useAuth();
+  
+  if (!user) {
+    return <Login />;
+  }
+  
+  // Verificar se é admin ou vereador
+  if (user.tipo !== 'admin' && user.tipo !== 'vereador') {
+    return (
+      <div style={{ 
+        padding: '40px', 
+        textAlign: 'center', 
+        background: '#020617', 
+        color: '#f9fafb',
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'column'
+      }}>
+        <h2>Acesso Negado</h2>
+        <p>Você não tem permissão para acessar esta área.</p>
+        <p>Tipo de usuário: {user.tipo}</p>
+        <p>Área restrita para administradores e vereadores.</p>
+        <Link 
+          to="/" 
+          style={{ 
+            color: '#3b82f6', 
+            textDecoration: 'none',
+            marginTop: '20px',
+            padding: '10px 20px',
+            border: '1px solid #3b82f6',
+            borderRadius: '8px'
+          }}
+        >
+          ← Voltar ao início
+        </Link>
+      </div>
+    );
+  }
+  
   return children;
 }
 
@@ -40,24 +85,30 @@ export default function App() {
     <Layout>
       <Routes>
         {/* APP */}
-        <Route path="/cadastro" element={<Cadastro />} />
-
-          <Route
-    path="/perfil"
-    element={
-      <PrivateRoute>
-        <Perfil />
-      </PrivateRoute>
-    }
-  />
-  <Route
-  path="/conversas"
-  element={
-    <PrivateRoute>
-      <MinhasConversas />
-    </PrivateRoute>
-  }
-/>
+        <Route
+          path="/perfil"
+          element={
+            <PrivateRoute>
+              <Perfil />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/conversas"
+          element={
+            <PrivateRoute>
+              <Chat />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/conversas/:id"
+          element={
+            <PrivateRoute>
+              <Chat />
+            </PrivateRoute>
+          }
+        />
         <Route 
           path="/" 
           element={
@@ -128,9 +179,17 @@ export default function App() {
         <Route 
           path="/admin/noticias" 
           element={
-            <PrivateRoute>
+            <AdminRoute>
               <AdminNoticias />
-            </PrivateRoute>
+            </AdminRoute>
+          } 
+        />
+        <Route 
+          path="/admin/usuarios" 
+          element={
+            <AdminRoute>
+              <AdminUsuarios />
+            </AdminRoute>
           } 
         />
       </Routes>

@@ -19,8 +19,9 @@ function Perfil() {
         Meu Perfil
       </h2>
 
-      <p><b>Nome:</b> {user?.name}</p>
-      <p style={{ marginBottom: 12 }}><b>E-mail:</b> {user?.email}</p>
+      <p><b>Nome:</b> {user?.nome}</p>
+      <p><b>E-mail:</b> {user?.email}</p>
+      <p style={{ marginBottom: 12 }}><b>Telefone:</b> {user?.telefone || "Não informado"}</p>
 
       <button
         onClick={simulateNotification}

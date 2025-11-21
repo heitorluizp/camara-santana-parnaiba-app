@@ -1,179 +1,1027 @@
+require('dotenv').config();
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+const { createConnection, getConnection } = require('./database/connection');
+const { authenticateToken, requireUser, requireAdmin } = require('./middleware/auth');
+
+// Rotas
+const authRoutes = require('./routes/auth');
 
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-// --- MOCK DE DADOS ---
+// Middlewares de segurança
+// Configuração dinâmica para desenvolvimento
+const isDevelopment = process.env.NODE_ENV !== 'production';
 
-let noticias = [
-  {
-    id: 1,
-    titulo: "Sessão Ordinária discute orçamento municipal",
-    resumo: "Vereadores debatem prioridades para o próximo ano.",
-    imagemUrl: "https://via.placeholder.com/600x300?text=Noticia+1",
-    conteudo: "Texto completo da notícia 1...",
-    createdAt: new Date()
+app.use(helmet({
+  contentSecurityPolicy: isDevelopment ? false : {
+    directives: {
+      defaultSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:", "http:"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https:"],
+      scriptSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: []
+    }
   },
-  {
-    id: 2,
-    titulo: "Câmara lança aplicativo oficial para população",
-    resumo: "Novo app facilita acesso às notícias e aos vereadores.",
-    imagemUrl: "https://via.placeholder.com/600x300?text=Noticia+2",
-    conteudo: "Texto completo da notícia 2...",
-    createdAt: new Date()
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? ['https://seudominio.com'] 
+    : (origin, callback) => {
+        // Em desenvolvimento, permitir qualquer localhost
+        if (!origin || origin.startsWith('http://localhost') || origin === 'capacitor://localhost') {
+          callback(null, true);
+        } else {
+          callback(new Error('Não permitido pelo CORS'));
+        }
+      },
+  credentials: true
+}));
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Servir arquivos estáticos (imagens) com headers CORS
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+}, express.static(path.join(__dirname, '../uploads')));
+
+// Configuração do multer para upload de imagens
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = path.join(__dirname, '../uploads/noticias');
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    // Gerar nome único: timestamp + nome original limpo
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    const name = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '').replace(ext, '');
+    cb(null, `${name}-${uniqueSuffix}${ext}`);
   }
-];
+});
 
-let vereadores = [
-  {
-    id: 1,
-    nome: "Vereador João Silva",
-    foto: "https://via.placeholder.com/200?text=Joao",
-    descricao: "Atua nas áreas de educação e saúde.",
-    contato: "joao.silva@camara.sp.gov.br",
-    dadosPublicos: "Mandato 2025-2028"
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
   },
-  {
-    id: 2,
-    nome: "Vereadora Maria Souza",
-    foto: "https://via.placeholder.com/200?text=Maria",
-    descricao: "Atuação voltada para políticas sociais.",
-    contato: "maria.souza@camara.sp.gov.br",
-    dadosPublicos: "Mandato 2025-2028"
+  fileFilter: function (req, file, cb) {
+    // Aceitar apenas imagens
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('O arquivo deve ser uma imagem (jpg, png, gif, etc.)'), false);
+    }
   }
-];
-
-let leis = [
-  {
-    id: 1,
-    numero: "1234",
-    ano: 2024,
-    titulo: "Lei de Transparência Municipal",
-    ementa: "Dispõe sobre a transparência dos atos da administração pública.",
-  },
-  {
-    id: 2,
-    numero: "5678",
-    ano: 2023,
-    titulo: "Lei de Acesso à Informação",
-    ementa: "Regulamenta o acesso às informações públicas.",
-  },
-];
-
-let propostas = [
-  {
-    id: 1,
-    tipo: "Projeto de Lei",
-    numero: "001",
-    ano: 2025,
-    autor: "Vereador João Silva",
-    titulo: "Projeto de Lei para criação de parque municipal",
-  },
-  {
-    id: 2,
-    tipo: "Requerimento",
-    numero: "015",
-    ano: 2025,
-    autor: "Vereadora Maria Souza",
-    titulo: "Requerimento de informações sobre obras em andamento",
-  },
-];
-
-
-let mensagens = [];
-
-// --- ROTAS ---
-
-// teste
-app.get("/ping", (req, res) => {
-  res.json({ message: "pong" });
 });
 
-// lista de notícias
-app.get("/noticias", (req, res) => {
-  res.json(noticias);
+
+
+// Middleware para logs
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
 });
 
-// notícia por id
-app.get("/noticias/:id", (req, res) => {
-  const id = Number(req.params.id);
-  const noticia = noticias.find(n => n.id === id);
-  if (!noticia) return res.status(404).json({ error: "Notícia não encontrada" });
-  res.json(noticia);
-});
-
-// lista de vereadores
-app.get("/vereadores", (req, res) => {
-  res.json(vereadores);
-});
-
-// vereador por id
-app.get("/vereadores/:id", (req, res) => {
-  const id = Number(req.params.id);
-  const vereador = vereadores.find(v => v.id === id);
-  if (!vereador) return res.status(404).json({ error: "Vereador não encontrado" });
-  res.json(vereador);
-});
-
-// enviar mensagem para vereador
-app.post("/vereadores/:id/mensagens", (req, res) => {
-  const id = Number(req.params.id);
-  const vereador = vereadores.find(v => v.id === id);
-  if (!vereador) return res.status(404).json({ error: "Vereador não encontrado" });
-
-  const { nome, email, texto } = req.body;
-
-  if (!nome || !email || !texto) {
-    return res.status(400).json({ error: "nome, email e texto são obrigatórios" });
+// Inicializar conexão com banco de dados
+async function initializeDatabase() {
+  try {
+    await createConnection();
+    console.log('✅ Base de dados inicializada');
+  } catch (error) {
+    console.error('❌ Erro ao inicializar base de dados:', error);
+    process.exit(1);
   }
+}
 
-  const msg = {
-    id: mensagens.length + 1,
-    vereadorId: id,
-    nome,
-    email,
-    texto,
-    createdAt: new Date()
-  };
+// === ROTAS DA API ===
 
-  mensagens.push(msg);
+// Rotas de autenticação
+app.use('/api/auth', authRoutes);
 
-  res.status(201).json({ ok: true });
+// === ROTAS PÚBLICAS ===
+
+// Listar notícias
+app.get("/api/noticias", async (req, res) => {
+  try {
+    const connection = getConnection();
+    
+    // Buscar notícias
+    const [rows] = await connection.execute(
+      `SELECT n.id, n.titulo, n.resumo, n.imagem_url as imagemUrl, n.views, 
+              n.created_at as createdAt, u.nome as autor
+       FROM noticias n 
+       LEFT JOIN usuarios u ON n.autor_id = u.id 
+       WHERE n.publicado = true 
+       ORDER BY n.created_at DESC`
+    );
+
+    // Para cada notícia, buscar suas imagens adicionais
+    for (let noticia of rows) {
+      const [imagens] = await connection.execute(
+        'SELECT id, url_imagem, descricao, ordem FROM noticia_imagens WHERE noticia_id = ? ORDER BY ordem, created_at',
+        [noticia.id]
+      );
+      noticia.imagens = imagens;
+    }
+
+    res.json(rows);
+  } catch (error) {
+    console.error('Erro ao buscar notícias:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
 });
 
-// leis (com filtro simples por query string ?q=)
-app.get("/leis", (req, res) => {
-  const q = (req.query.q || "").toLowerCase();
-  if (!q) return res.json(leis);
-  const filtradas = leis.filter(
-    (l) =>
-      l.numero.includes(q) ||
-      String(l.ano).includes(q) ||
-      l.titulo.toLowerCase().includes(q) ||
-      l.ementa.toLowerCase().includes(q)
-  );
-  res.json(filtradas);
+// Buscar notícia por ID
+app.get("/api/noticias/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const connection = getConnection();
+    
+    // Buscar notícia
+    const [rows] = await connection.execute(
+      `SELECT n.*, u.nome as autor
+       FROM noticias n 
+       LEFT JOIN usuarios u ON n.autor_id = u.id 
+       WHERE n.id = ? AND n.publicado = true`,
+      [id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Notícia não encontrada" });
+    }
+
+    // Incrementar visualizações
+    await connection.execute(
+      'UPDATE noticias SET views = views + 1 WHERE id = ?',
+      [id]
+    );
+
+    const noticia = rows[0];
+    noticia.imagemUrl = noticia.imagem_url; // Compatibilidade com frontend
+
+    // Buscar imagens adicionais
+    const [imagens] = await connection.execute(
+      'SELECT id, url_imagem, descricao, ordem FROM noticia_imagens WHERE noticia_id = ? ORDER BY ordem, created_at',
+      [id]
+    );
+    noticia.imagens = imagens;
+    
+    res.json(noticia);
+  } catch (error) {
+    console.error('Erro ao buscar notícia:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
 });
 
-// propostas (?q=)
-app.get("/propostas", (req, res) => {
-  const q = (req.query.q || "").toLowerCase();
-  if (!q) return res.json(propostas);
-  const filtradas = propostas.filter(
-    (p) =>
-      p.tipo.toLowerCase().includes(q) ||
-      p.numero.includes(q) ||
-      String(p.ano).includes(q) ||
-      p.autor.toLowerCase().includes(q) ||
-      p.titulo.toLowerCase().includes(q)
-  );
-  res.json(filtradas);
+// Listar vereadores
+app.get("/api/vereadores", async (req, res) => {
+  try {
+    const connection = getConnection();
+    const [rows] = await connection.execute(
+      `SELECT u.id, u.nome, u.foto_url as foto, v.descricao, 
+              v.contato_publico as contato, v.dados_publicos as dadosPublicos,
+              v.partido, v.gabinete
+       FROM usuarios u 
+       JOIN vereadores v ON u.id = v.usuario_id 
+       WHERE u.tipo = 'vereador' AND u.ativo = true
+       ORDER BY u.nome`
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error('Erro ao buscar vereadores:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
 });
 
+// Buscar vereador por ID
+app.get("/api/vereadores/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const connection = getConnection();
+    
+    const [rows] = await connection.execute(
+      `SELECT u.id, u.nome, u.foto_url as foto, v.descricao, 
+              v.contato_publico as contato, v.dados_publicos as dadosPublicos,
+              v.partido, v.gabinete, v.comissoes
+       FROM usuarios u 
+       JOIN vereadores v ON u.id = v.usuario_id 
+       WHERE u.id = ? AND u.tipo = 'vereador' AND u.ativo = true`,
+      [id]
+    );
 
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Vereador não encontrado" });
+    }
+
+    res.json(rows[0]);
+  } catch (error) {
+    console.error('Erro ao buscar vereador:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// === ROTAS PROTEGIDAS ===
+
+// Enviar mensagem para vereador (requer autenticação)
+app.post("/api/vereadores/:id/mensagens", authenticateToken, async (req, res) => {
+  try {
+    const vereadorId = Number(req.params.id);
+    const { assunto, mensagem } = req.body;
+    const remetenteId = req.user.id;
+
+    if (!assunto || !mensagem) {
+      return res.status(400).json({ error: "Assunto e mensagem são obrigatórios" });
+    }
+
+    const connection = getConnection();
+
+    // Verificar se o vereador existe
+    const [vereador] = await connection.execute(
+      'SELECT id FROM usuarios WHERE id = ? AND tipo = "vereador" AND ativo = true',
+      [vereadorId]
+    );
+
+    if (vereador.length === 0) {
+      return res.status(404).json({ error: "Vereador não encontrado" });
+    }
+
+    // Inserir mensagem
+    await connection.execute(
+      'INSERT INTO mensagens (remetente_id, destinatario_id, assunto, mensagem) VALUES (?, ?, ?, ?)',
+      [remetenteId, vereadorId, assunto, mensagem]
+    );
+
+    res.status(201).json({ message: "Mensagem enviada com sucesso" });
+  } catch (error) {
+    console.error('Erro ao enviar mensagem:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Rota antiga removida - usando nova rota de conversas com JSON
+
+// Buscar leis (com filtro opcional)
+app.get("/api/leis", async (req, res) => {
+  try {
+    const q = (req.query.q || "").toLowerCase();
+    const connection = getConnection();
+    
+    let query = `SELECT id, numero, ano, tipo, titulo, ementa, status, data_publicacao 
+                 FROM leis WHERE status = 'sancionado'`;
+    let params = [];
+    
+    if (q) {
+      query += ` AND (numero LIKE ? OR CAST(ano AS CHAR) LIKE ? OR titulo LIKE ? OR ementa LIKE ?)`;
+      params = [`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`];
+    }
+    
+    query += ` ORDER BY ano DESC, numero DESC`;
+    
+    const [rows] = await connection.execute(query, params);
+    res.json(rows);
+  } catch (error) {
+    console.error('Erro ao buscar leis:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Buscar propostas (com filtro opcional)
+app.get("/api/propostas", async (req, res) => {
+  try {
+    const q = (req.query.q || "").toLowerCase();
+    const connection = getConnection();
+    
+    let query = `SELECT p.id, p.numero, p.ano, p.tipo, p.titulo, p.resumo, p.status, 
+                        u.nome as autor, p.data_protocolo
+                 FROM propostas p
+                 LEFT JOIN usuarios u ON p.autor_id = u.id`;
+    let params = [];
+    
+    if (q) {
+      query += ` WHERE (p.numero LIKE ? OR CAST(p.ano AS CHAR) LIKE ? OR p.tipo LIKE ? 
+                        OR p.titulo LIKE ? OR u.nome LIKE ?)`;
+      params = [`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`];
+    }
+    
+    query += ` ORDER BY p.ano DESC, p.numero DESC`;
+    
+    const [rows] = await connection.execute(query, params);
+    res.json(rows);
+  } catch (error) {
+    console.error('Erro ao buscar propostas:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Buscar ordem do dia
+app.get("/api/ordem-dia", async (req, res) => {
+  try {
+    const connection = getConnection();
+    const [rows] = await connection.execute(
+      `SELECT id, data_sessao as dataSessao, numero_sessao as numeroSessao, 
+              tipo_sessao as tipoSessao, hora_inicio as horaInicio, 
+              local, pauta, status
+       FROM ordem_dia 
+       WHERE data_sessao >= CURDATE() OR status = 'em_andamento'
+       ORDER BY data_sessao ASC, hora_inicio ASC`
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error('Erro ao buscar ordem do dia:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// === ROTAS ADMIN ===
+
+// Upload de imagem para notícias (admin)
+app.post("/api/admin/upload-imagem", authenticateToken, requireAdmin, upload.single('imagem'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhuma imagem foi enviada' });
+    }
+
+    // Construir URL da imagem
+    const imageUrl = `http://localhost:${process.env.PORT || 3000}/uploads/noticias/${req.file.filename}`;
+    
+    res.json({ 
+      message: 'Imagem enviada com sucesso',
+      url: imageUrl,
+      filename: req.file.filename
+    });
+  } catch (error) {
+    console.error('Erro no upload da imagem:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Upload múltiplo de imagens para notícias (admin)
+app.post("/api/admin/upload-imagens-multiplas", authenticateToken, requireAdmin, upload.array('imagens', 10), (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'Nenhuma imagem foi enviada' });
+    }
+
+    const imagensUrls = req.files.map(file => ({
+      url: `http://localhost:${process.env.PORT || 3000}/uploads/noticias/${file.filename}`,
+      filename: file.filename
+    }));
+    
+    res.json({ 
+      message: 'Imagens enviadas com sucesso',
+      imagens: imagensUrls
+    });
+  } catch (error) {
+    console.error('Erro no upload das imagens:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Listar todas as notícias (admin)
+app.get("/api/admin/noticias", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const connection = getConnection();
+    const [rows] = await connection.execute(
+      `SELECT n.id, n.titulo, n.resumo, n.publicado, n.destaque, n.views,
+              n.created_at as createdAt, u.nome as autor
+       FROM noticias n 
+       LEFT JOIN usuarios u ON n.autor_id = u.id 
+       ORDER BY n.created_at DESC`
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error('Erro ao buscar notícias admin:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Criar notícia (admin)
+app.post("/api/admin/noticias", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { titulo, resumo, conteudo, imagem_url, publicado = false, destaque = false } = req.body;
+    const autorId = req.user.id;
+
+    if (!titulo || !resumo || !conteudo) {
+      return res.status(400).json({ error: 'Título, resumo e conteúdo são obrigatórios' });
+    }
+
+    const connection = getConnection();
+    const [result] = await connection.execute(
+      'INSERT INTO noticias (titulo, resumo, conteudo, imagem_url, autor_id, publicado, destaque) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [titulo, resumo, conteudo, imagem_url || null, autorId, publicado, destaque]
+    );
+
+    res.status(201).json({ 
+      message: 'Notícia criada com sucesso',
+      id: result.insertId 
+    });
+  } catch (error) {
+    console.error('Erro ao criar notícia:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Editar notícia (admin)
+app.put("/api/admin/noticias/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { titulo, resumo, conteudo, imagem_url, publicado, destaque } = req.body;
+
+    if (!titulo || !resumo || !conteudo) {
+      return res.status(400).json({ error: 'Título, resumo e conteúdo são obrigatórios' });
+    }
+
+    const connection = getConnection();
+    const [result] = await connection.execute(
+      'UPDATE noticias SET titulo = ?, resumo = ?, conteudo = ?, imagem_url = ?, publicado = ?, destaque = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [titulo, resumo, conteudo, imagem_url || null, publicado || false, destaque || false, id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Notícia não encontrada' });
+    }
+
+    res.json({ message: 'Notícia atualizada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao editar notícia:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Deletar notícia (admin)
+app.delete("/api/admin/noticias/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const connection = getConnection();
+    
+    const [result] = await connection.execute(
+      'DELETE FROM noticias WHERE id = ?',
+      [id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Notícia não encontrada' });
+    }
+
+    res.json({ message: 'Notícia deletada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao deletar notícia:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Obter notícia específica para edição (admin)
+app.get("/api/admin/noticias/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const connection = getConnection();
+    
+    const [rows] = await connection.execute(
+      `SELECT n.*, u.nome as autor
+       FROM noticias n 
+       LEFT JOIN usuarios u ON n.autor_id = u.id 
+       WHERE n.id = ?`,
+      [id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Notícia não encontrada' });
+    }
+
+    res.json(rows[0]);
+  } catch (error) {
+    console.error('Erro ao buscar notícia:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Upload de imagem para notícias (admin)
+app.post("/api/admin/upload-imagem", authenticateToken, requireAdmin, upload.single('imagem'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhuma imagem foi enviada' });
+    }
+
+    // Construir URL da imagem
+    const imageUrl = `http://localhost:${process.env.PORT || 3000}/uploads/noticias/${req.file.filename}`;
+    
+    res.json({ 
+      message: 'Imagem enviada com sucesso',
+      url: imageUrl,
+      filename: req.file.filename
+    });
+  } catch (error) {
+    console.error('Erro no upload da imagem:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Upload múltiplo de imagens para notícias (admin)
+app.post("/api/admin/upload-imagens-multiplas", authenticateToken, requireAdmin, upload.array('imagens', 10), (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'Nenhuma imagem foi enviada' });
+    }
+
+    const imagensUrls = req.files.map(file => ({
+      url: `http://localhost:${process.env.PORT || 3000}/uploads/noticias/${file.filename}`,
+      filename: file.filename
+    }));
+    
+    res.json({ 
+      message: 'Imagens enviadas com sucesso',
+      imagens: imagensUrls
+    });
+  } catch (error) {
+    console.error('Erro no upload das imagens:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Adicionar imagens a uma notícia (admin)
+app.post("/api/admin/noticias/:id/imagens", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const noticiaId = Number(req.params.id);
+    const { imagens } = req.body; // Array de {url_imagem, descricao, ordem}
+
+    if (!imagens || !Array.isArray(imagens)) {
+      return res.status(400).json({ error: 'Array de imagens é obrigatório' });
+    }
+
+    const connection = getConnection();
+    
+    // Verificar se a notícia existe
+    const [noticia] = await connection.execute(
+      'SELECT id FROM noticias WHERE id = ?',
+      [noticiaId]
+    );
+
+    if (noticia.length === 0) {
+      return res.status(404).json({ error: 'Notícia não encontrada' });
+    }
+
+    // Inserir as imagens
+    for (let i = 0; i < imagens.length; i++) {
+      const img = imagens[i];
+      await connection.execute(
+        'INSERT INTO noticia_imagens (noticia_id, url_imagem, descricao, ordem) VALUES (?, ?, ?, ?)',
+        [noticiaId, img.url_imagem, img.descricao || '', img.ordem || i]
+      );
+    }
+
+    res.json({ message: 'Imagens adicionadas com sucesso' });
+  } catch (error) {
+    console.error('Erro ao adicionar imagens:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Listar imagens de uma notícia (admin)
+app.get("/api/admin/noticias/:id/imagens", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const noticiaId = Number(req.params.id);
+    const connection = getConnection();
+    
+    const [rows] = await connection.execute(
+      'SELECT * FROM noticia_imagens WHERE noticia_id = ? ORDER BY ordem, created_at',
+      [noticiaId]
+    );
+
+    res.json(rows);
+  } catch (error) {
+    console.error('Erro ao buscar imagens:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Remover imagem de uma notícia (admin)
+app.delete("/api/admin/noticias/:noticiaId/imagens/:imagemId", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { noticiaId, imagemId } = req.params;
+    const connection = getConnection();
+    
+    const [result] = await connection.execute(
+      'DELETE FROM noticia_imagens WHERE id = ? AND noticia_id = ?',
+      [imagemId, noticiaId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Imagem não encontrada' });
+    }
+
+    res.json({ message: 'Imagem removida com sucesso' });
+  } catch (error) {
+    console.error('Erro ao remover imagem:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+//=============================================================================
+// ROTAS DE USUÁRIOS (ADMIN)
+//=============================================================================
+
+// Listar todos os usuários
+app.get("/api/admin/usuarios", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const db = await getConnection();
+    
+    const [usuarios] = await db.execute(`
+      SELECT id, nome, email, telefone, tipo, created_at as createdAt, updated_at as updatedAt
+      FROM usuarios 
+      ORDER BY nome ASC
+    `);
+
+    res.json(usuarios);
+  } catch (error) {
+    console.error('Erro ao buscar usuários:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Criar novo usuário
+app.post("/api/admin/usuarios", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { nome, email, telefone, tipo, senha } = req.body;
+
+    if (!nome || !email || !tipo || !senha) {
+      return res.status(400).json({ error: 'Nome, email, tipo e senha são obrigatórios' });
+    }
+
+    // Verificar se email já existe
+    const db = await getConnection();
+    const [existing] = await db.execute(
+      'SELECT id FROM usuarios WHERE email = ?',
+      [email]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Email já está em uso' });
+    }
+
+    // Hash da senha
+    const bcrypt = require('bcryptjs');
+    const senhaHash = await bcrypt.hash(senha, 12);
+
+    const [result] = await db.execute(`
+      INSERT INTO usuarios (nome, email, telefone, senha_hash, tipo) 
+      VALUES (?, ?, ?, ?, ?)
+    `, [nome, email, telefone || null, senhaHash, tipo]);
+
+    res.status(201).json({ 
+      id: result.insertId,
+      message: 'Usuário criado com sucesso' 
+    });
+  } catch (error) {
+    console.error('Erro ao criar usuário:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      res.status(400).json({ error: 'Email já está em uso' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
+});
+
+// Atualizar usuário
+app.put("/api/admin/usuarios/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nome, email, telefone, tipo, senha } = req.body;
+
+    if (!nome || !email || !tipo) {
+      return res.status(400).json({ error: 'Nome, email e tipo são obrigatórios' });
+    }
+
+    const db = await getConnection();
+    
+    // Verificar se email já existe (exceto para o próprio usuário)
+    const [existing] = await db.execute(
+      'SELECT id FROM usuarios WHERE email = ? AND id != ?',
+      [email, id]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Email já está em uso' });
+    }
+
+    let query = `UPDATE usuarios SET nome = ?, email = ?, telefone = ?, tipo = ?`;
+    let params = [nome, email, telefone || null, tipo];
+
+    // Se uma nova senha foi fornecida, incluir na atualização
+    if (senha && senha.trim() !== '') {
+      const bcrypt = require('bcryptjs');
+      const senhaHash = await bcrypt.hash(senha, 12);
+      query += `, senha_hash = ?`;
+      params.push(senhaHash);
+    }
+
+    query += ` WHERE id = ?`;
+    params.push(id);
+
+    const [result] = await db.execute(query, params);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    res.json({ message: 'Usuário atualizado com sucesso' });
+  } catch (error) {
+    console.error('Erro ao atualizar usuário:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      res.status(400).json({ error: 'Email já está em uso' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
+});
+
+// Excluir usuário
+app.delete("/api/admin/usuarios/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Não permitir que o admin exclua a si mesmo
+    if (parseInt(id) === req.user.id) {
+      return res.status(400).json({ error: 'Você não pode excluir seu próprio usuário' });
+    }
+
+    const db = await getConnection();
+    const [result] = await db.execute('DELETE FROM usuarios WHERE id = ?', [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    res.json({ message: 'Usuário excluído com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+//=============================================================================
+// ROTAS DE CHAT/CONVERSAS
+//=============================================================================
+
+// Listar vereadores disponíveis para chat
+app.get("/api/vereadores-chat", authenticateToken, async (req, res) => {
+  try {
+    const db = await getConnection();
+    
+    const [vereadores] = await db.execute(`
+      SELECT u.id, u.nome, u.foto_url, v.partido, v.gabinete
+      FROM usuarios u
+      INNER JOIN vereadores v ON u.id = v.usuario_id
+      WHERE u.tipo = 'vereador' AND u.ativo = true
+      ORDER BY u.nome ASC
+    `);
+
+    res.json(vereadores);
+  } catch (error) {
+    console.error('Erro ao buscar vereadores:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Listar conversas do usuário logado
+app.get("/api/conversas", authenticateToken, async (req, res) => {
+  try {
+    const db = await getConnection();
+    const userId = req.user.id;
+    
+    let query;
+    let params;
+    
+    if (req.user.tipo === 'vereador') {
+      // Vereador vê conversas onde ele é o destinatário
+      query = `
+        SELECT c.*, 
+               u.nome as cidadao_nome, 
+               u.foto_url as cidadao_foto
+        FROM conversas c
+        INNER JOIN usuarios u ON c.cidadao_id = u.id
+        WHERE c.vereador_id = ? AND c.status = 'ativa'
+        ORDER BY c.ultima_mensagem_data DESC
+      `;
+      params = [userId];
+    } else {
+      // Cidadão vê suas conversas com vereadores
+      query = `
+        SELECT c.*, 
+               u.nome as vereador_nome, 
+               u.foto_url as vereador_foto,
+               v.partido
+        FROM conversas c
+        INNER JOIN usuarios u ON c.vereador_id = u.id
+        LEFT JOIN vereadores v ON u.id = v.usuario_id
+        WHERE c.cidadao_id = ? AND c.status = 'ativa'
+        ORDER BY c.ultima_mensagem_data DESC
+      `;
+      params = [userId];
+    }
+
+    const [conversas] = await db.execute(query, params);
+    
+    // Processar mensagens JSON
+    const conversasProcessadas = conversas.map(conversa => ({
+      ...conversa,
+      mensagens: typeof conversa.mensagens === 'string' 
+        ? JSON.parse(conversa.mensagens || '[]')
+        : (conversa.mensagens || [])
+    }));
+
+    res.json(conversasProcessadas);
+  } catch (error) {
+    console.error('Erro ao buscar conversas:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Buscar uma conversa específica
+app.get("/api/conversas/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const db = await getConnection();
+    
+    const [conversas] = await db.execute(`
+      SELECT c.*, 
+             uc.nome as cidadao_nome, 
+             uc.foto_url as cidadao_foto,
+             uv.nome as vereador_nome, 
+             uv.foto_url as vereador_foto,
+             v.partido
+      FROM conversas c
+      INNER JOIN usuarios uc ON c.cidadao_id = uc.id
+      INNER JOIN usuarios uv ON c.vereador_id = uv.id
+      LEFT JOIN vereadores v ON uv.id = v.usuario_id
+      WHERE c.id = ? AND (c.cidadao_id = ? OR c.vereador_id = ?)
+    `, [id, userId, userId]);
+
+    if (conversas.length === 0) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+
+    const conversa = {
+      ...conversas[0],
+      mensagens: typeof conversas[0].mensagens === 'string' 
+        ? JSON.parse(conversas[0].mensagens || '[]')
+        : (conversas[0].mensagens || [])
+    };
+
+    res.json(conversa);
+  } catch (error) {
+    console.error('Erro ao buscar conversa:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Iniciar nova conversa (apenas cidadãos)
+app.post("/api/conversas", authenticateToken, async (req, res) => {
+  try {
+    const { vereadorId, titulo, mensagem } = req.body;
+    const cidadaoId = req.user.id;
+
+    if (req.user.tipo !== 'cidadao') {
+      return res.status(403).json({ error: 'Apenas cidadãos podem iniciar conversas' });
+    }
+
+    if (!vereadorId || !titulo || !mensagem) {
+      return res.status(400).json({ error: 'Vereador, título e mensagem são obrigatórios' });
+    }
+
+    const db = await getConnection();
+    
+    // Verificar se já existe conversa entre eles
+    const [existente] = await db.execute(`
+      SELECT id FROM conversas 
+      WHERE cidadao_id = ? AND vereador_id = ? AND status = 'ativa'
+    `, [cidadaoId, vereadorId]);
+
+    if (existente.length > 0) {
+      return res.status(400).json({ error: 'Já existe uma conversa ativa com este vereador' });
+    }
+
+    // Criar primeira mensagem
+    const primeiraMensagem = {
+      id: 1,
+      remetente_id: cidadaoId,
+      remetente_tipo: 'cidadao',
+      mensagem: mensagem,
+      data: new Date().toISOString()
+    };
+
+    const mensagensJson = JSON.stringify([primeiraMensagem]);
+
+    const [result] = await db.execute(`
+      INSERT INTO conversas (cidadao_id, vereador_id, titulo, mensagens, ultima_mensagem_data) 
+      VALUES (?, ?, ?, ?, NOW())
+    `, [cidadaoId, vereadorId, titulo, mensagensJson]);
+
+    res.status(201).json({ 
+      id: result.insertId,
+      message: 'Conversa iniciada com sucesso' 
+    });
+  } catch (error) {
+    console.error('Erro ao iniciar conversa:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Enviar mensagem em uma conversa
+app.post("/api/conversas/:id/mensagens", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { mensagem } = req.body;
+    const userId = req.user.id;
+
+    if (!mensagem || !mensagem.trim()) {
+      return res.status(400).json({ error: 'Mensagem é obrigatória' });
+    }
+
+    const db = await getConnection();
+    
+    // Buscar conversa e verificar permissão
+    const [conversas] = await db.execute(`
+      SELECT * FROM conversas 
+      WHERE id = ? AND (cidadao_id = ? OR vereador_id = ?) AND status = 'ativa'
+    `, [id, userId, userId]);
+
+    if (conversas.length === 0) {
+      return res.status(404).json({ error: 'Conversa não encontrada ou sem permissão' });
+    }
+
+    const conversa = conversas[0];
+    const mensagensExistentes = typeof conversa.mensagens === 'string' 
+      ? JSON.parse(conversa.mensagens || '[]')
+      : (conversa.mensagens || []);
+    
+    // Criar nova mensagem
+    const novaMensagem = {
+      id: mensagensExistentes.length + 1,
+      remetente_id: userId,
+      remetente_tipo: req.user.tipo,
+      mensagem: mensagem.trim(),
+      data: new Date().toISOString()
+    };
+
+    const novasMensagens = [...mensagensExistentes, novaMensagem];
+    const mensagensJson = JSON.stringify(novasMensagens);
+
+    await db.execute(`
+      UPDATE conversas 
+      SET mensagens = ?, ultima_mensagem_data = NOW(), atualizada_em = NOW()
+      WHERE id = ?
+    `, [mensagensJson, id]);
+
+    res.json({ 
+      message: 'Mensagem enviada com sucesso',
+      mensagem: novaMensagem
+    });
+  } catch (error) {
+    console.error('Erro ao enviar mensagem:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Middleware para tratamento de erros
+app.use((error, req, res, next) => {
+  console.error('Erro não tratado:', error);
+  res.status(500).json({ error: 'Erro interno do servidor' });
+});
+
+// Middleware para rotas não encontradas (removido temporariamente para evitar erro de path-to-regexp)
+
+// Inicializar servidor
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`API rodando na porta ${PORT}`);
-});
+
+async function startServer() {
+  try {
+    await initializeDatabase();
+    
+    app.listen(PORT, () => {
+      console.log(`🚀 API rodando na porta ${PORT}`);
+      console.log(`📱 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🔗 http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error('❌ Erro ao inicializar servidor:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
