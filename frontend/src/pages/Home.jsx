@@ -9,9 +9,9 @@ function Home() {
 
   useEffect(() => {
     fetch(`${API}/noticias`)
-      .then(res => res.json())
-      .then(data => setNoticias(data))
-      .catch(err => console.error(err))
+      .then((res) => res.json())
+      .then((data) => setNoticias(data))
+      .catch((err) => console.error(err))
       .finally(() => setLoading(false));
   }, []);
 
@@ -19,29 +19,68 @@ function Home() {
 
   return (
     <div>
-      <h2>Notícias</h2>
-      <div style={{ display: "grid", gap: 16 }}>
-        {noticias.map(n => (
+      <h2
+        style={{
+          fontSize: 24,
+          fontWeight: 700,
+          color: "#1f2933",
+          marginBottom: 16,
+        }}
+      >
+        Notícias
+      </h2>
+
+      <div style={{ display: "grid", gap: 12 }}>
+        {noticias.map((n) => (
           <Link
             key={n.id}
             to={`/noticia/${n.id}`}
             style={{
-                backgroundColor: "#ffffff",
-                border: "1px solid #d1d5db",
-                boxShadow: "0 1px 2px rgba(15, 23, 42, 0.08)",
-                color: "#1f2933",
-
+              display: "flex",
+              gap: 12,
+              alignItems: "stretch",
+              padding: 12,
+              backgroundColor: "#ffffff",
+              borderRadius: 8,
+              border: "1px solid #d1d5db",
+              textDecoration: "none",
+              color: "#1f2933",
+              boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
             }}
           >
             {n.imagemUrl && (
               <img
                 src={n.imagemUrl}
                 alt={n.titulo}
-                style={{ width: "100%", borderRadius: 6, marginBottom: 8 }}
+                style={{
+                  width: 96,
+                  height: 64,
+                  borderRadius: 4,
+                  objectFit: "cover",
+                  flexShrink: 0,
+                }}
               />
             )}
-            <h3 style={{ marginBottom: 4 }}>{n.titulo}</h3>
-            <p style={{ opacity: 0.8 }}>{n.resumo}</p>
+
+            <div>
+              <h3
+                style={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  marginBottom: 4,
+                }}
+              >
+                {n.titulo}
+              </h3>
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "#4b5563",
+                }}
+              >
+                {n.resumo}
+              </p>
+            </div>
           </Link>
         ))}
       </div>

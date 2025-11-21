@@ -1,113 +1,162 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 const API = "http://localhost:3000";
 
 function VereadorDetalhe() {
   const { id } = useParams();
+  const { user } = useAuth();
   const [vereador, setVereador] = useState(null);
-  const [status, setStatus] = useState("");
-  const [form, setForm] = useState({
-    nome: "",
-    email: "",
-    texto: ""
-  });
+  const [mensagens, setMensagens] = useState([]);
+  const [texto, setTexto] = useState("");
 
   useEffect(() => {
     fetch(`${API}/vereadores/${id}`)
-      .then(res => res.json())
-      .then(data => setVereador(data))
-      .catch(err => console.error(err));
+      .then((res) => res.json())
+      .then((data) => {
+        setVereador(data);
+        // histórico bem simples (mock)
+        setMensagens([
+          { id: 1, de: "vereador", texto: `Olá, sou ${data.nome}.` },
+          {
+            id: 2,
+            de: "cidadao",
+            texto: "Olá, gostaria de enviar uma mensagem.",
+          },
+        ]);
+      })
+      .catch(console.error);
   }, [id]);
 
-  function handleChange(e) {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  }
-
-  async function handleSubmit(e) {
+  function enviarMensagem(e) {
     e.preventDefault();
-    setStatus("enviando...");
-    try {
-      const resp = await fetch(`${API}/vereadores/${id}/mensagens`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form)
-      });
+    if (!texto.trim()) return;
 
-      if (!resp.ok) {
-        const body = await resp.json();
-        throw new Error(body.error || "Erro ao enviar");
-      }
+    setMensagens((anteriores) => [
+      ...anteriores,
+      { id: anteriores.length + 1, de: "cidadao", texto: texto.trim() },
+    ]);
 
-      setStatus("Mensagem enviada com sucesso!");
-      setForm({ nome: "", email: "", texto: "" });
-    } catch (err) {
-      console.error(err);
-      setStatus("Erro ao enviar mensagem.");
-    }
+    setTexto("");
   }
 
   if (!vereador) return <p>Carregando...</p>;
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>
+      {/* Cabeçalho do vereador */}
+      <div
+        style={{
+          display: "flex",
+          gap: 12,
+          marginBottom: 16,
+          alignItems: "center",
+        }}
+      >
         <img
           src={vereador.foto}
           alt={vereador.nome}
-          style={{ width: 96, height: 96, borderRadius: "50%" }}
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: "50%",
+            objectFit: "cover",
+          }}
         />
         <div>
-          <h2>{vereador.nome}</h2>
-          <p>{vereador.descricao}</p>
-          <p style={{ opacity: 0.8 }}>Contato: {vereador.contato}</p>
-          <p style={{ opacity: 0.8 }}>{vereador.dadosPublicos}</p>
+          <h2 style={{ fontSize: 20, marginBottom: 4 }}>{vereador.nome}</h2>
+          <p style={{ fontSize: 13 }}>{vereador.descricao}</p>
+          <p style={{ fontSize: 12, color: "#4b5563" }}>
+            Contato: {vereador.contato}
+          </p>
         </div>
       </div>
 
-      <h3>Fale com {vereador.nome}</h3>
+      <h3
+        style={{
+          fontSize: 18,
+          marginBottom: 4,
+        }}
+      >
+        Fale com {vereador.nome}
+      </h3>
+
+      <p
+        style={{
+          fontSize: 12,
+          color: "#6b7280",
+          marginBottom: 8,
+        }}
+      >
+        Você está conversando como: <b>{user?.name}</b>
+      </p>
+
+      {/* Caixa simples de mensagens */}
+      <div
+        style={{
+          border: "1px solid #d1d5db",
+          borderRadius: 8,
+          backgroundColor: "#ffffff",
+          padding: 10,
+          minHeight: 160,
+          maxHeight: 260,
+          overflowY: "auto",
+          marginBottom: 8,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}
+      >
+        {mensagens.map((m) => (
+          <div
+            key={m.id}
+            style={{
+              alignSelf: m.de === "cidadao" ? "flex-end" : "flex-start",
+              backgroundColor: m.de === "cidadao" ? "#dbeafe" : "#e5e7eb",
+              padding: "6px 8px",
+              borderRadius: 8,
+              fontSize: 13,
+            }}
+          >
+            {m.texto}
+          </div>
+        ))}
+      </div>
+
+      {/* Input simples */}
       <form
-        onSubmit={handleSubmit}
-        style={{ display: "grid", gap: 12, maxWidth: 480 }}
+        onSubmit={enviarMensagem}
+        style={{ display: "flex", gap: 8, marginTop: 4 }}
       >
         <input
-          name="nome"
-          placeholder="Seu nome"
-          value={form.nome}
-          onChange={handleChange}
-          style={{ padding: 8, borderRadius: 4, border: "1px solid #444" }}
-        />
-        <input
-          name="email"
-          placeholder="Seu e-mail"
-          value={form.email}
-          onChange={handleChange}
-          style={{ padding: 8, borderRadius: 4, border: "1px solid #444" }}
-        />
-        <textarea
-          name="texto"
-          placeholder="Sua mensagem"
-          value={form.texto}
-          onChange={handleChange}
-          rows={4}
-          style={{ padding: 8, borderRadius: 4, border: "1px solid #444" }}
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          placeholder="Digite sua mensagem..."
+          style={{
+            flex: 1,
+            padding: "8px 10px",
+            borderRadius: 6,
+            border: "1px solid #d1d5db",
+            fontSize: 14,
+          }}
         />
         <button
           type="submit"
           style={{
             padding: "8px 12px",
-            borderRadius: 4,
+            borderRadius: 6,
             border: "none",
-            background: "#0af",
-            color: "#000",
-            fontWeight: "bold",
-            cursor: "pointer"
+            backgroundColor: "#2563eb",
+            color: "#fff",
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: "pointer",
           }}
         >
-          Enviar mensagem
+          Enviar
         </button>
       </form>
-      {status && <p style={{ marginTop: 12 }}>{status}</p>}
     </div>
   );
 }

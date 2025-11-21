@@ -6,6 +6,9 @@ const items = [
   { to: "/leis", label: "Leis", icon: "📜" },
   { to: "/tv", label: "TV", icon: "📺" },
   { to: "/propostas", label: "Propostas", icon: "📂" },
+  { to: "/perfil", label: "Perfil", icon: "👤" },
+  { to: "/conversas", label: "Conversas", icon: "💬" },
+
 ];
 
 export default function BottomNav() {
