@@ -1,10 +1,11 @@
 import { Link, useLocation } from "react-router-dom";
 
 const items = [
-  { to: "/admin/noticias", label: "Notícias" },
-  { to: "/admin/usuarios", label: "Usuários" },
-  // Futuro: { to: "/admin/mensagens", label: "Mensagens" },
-  // Futuro: { to: "/admin/leis", label: "Leis" },
+  { to: "/admin/noticias", label: "📰 Notícias" },
+  { to: "/admin/usuarios", label: "👥 Usuários" },
+  { to: "/admin/leis", label: "📚 Leis" },
+  { to: "/admin/propostas", label: "📝 Propostas" },
+  { to: "/admin/ordem-dia", label: "📅 Ordem do Dia" },
 ];
 
 export default function AdminSidebar() {

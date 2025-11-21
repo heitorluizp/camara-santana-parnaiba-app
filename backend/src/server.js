@@ -1168,6 +1168,518 @@ app.post("/api/conversas/:id/mensagens", authenticateToken, async (req, res) => 
   }
 });
 
+//=============================================================================
+// ROTAS ADMIN - LEIS MUNICIPAIS
+//=============================================================================
+
+// Listar todas as leis (admin)
+app.get("/api/admin/leis", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const db = await getConnection();
+    const [leis] = await db.execute(`
+      SELECT l.*, u.nome as autor_nome
+      FROM leis l
+      LEFT JOIN usuarios u ON l.autor_id = u.id
+      ORDER BY l.ano DESC, l.numero DESC
+    `);
+    res.json(leis);
+  } catch (error) {
+    console.error('Erro ao buscar leis:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Criar nova lei (admin)
+app.post("/api/admin/leis", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { numero, ano, tipo, titulo, ementa, texto_completo, status, data_publicacao } = req.body;
+    const autorId = req.user.id;
+
+    if (!numero || !ano || !titulo || !tipo) {
+      return res.status(400).json({ error: 'Número, ano, título e tipo são obrigatórios' });
+    }
+
+    const db = await getConnection();
+    
+    // Verificar se já existe lei com mesmo número/ano/tipo
+    const [existing] = await db.execute(
+      'SELECT id FROM leis WHERE numero = ? AND ano = ? AND tipo = ?',
+      [numero, ano, tipo]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Já existe uma lei com este número, ano e tipo' });
+    }
+
+    const [result] = await db.execute(`
+      INSERT INTO leis (numero, ano, tipo, titulo, ementa, texto_completo, autor_id, status, data_publicacao) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [numero, ano, tipo, titulo, ementa || null, texto_completo || null, autorId, status || 'tramitacao', data_publicacao || null]);
+
+    res.status(201).json({ 
+      id: result.insertId,
+      message: 'Lei criada com sucesso' 
+    });
+  } catch (error) {
+    console.error('Erro ao criar lei:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      res.status(400).json({ error: 'Já existe uma lei com este número, ano e tipo' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
+});
+
+// Buscar lei específica (admin)
+app.get("/api/admin/leis/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getConnection();
+    
+    const [leis] = await db.execute(`
+      SELECT l.*, u.nome as autor_nome
+      FROM leis l
+      LEFT JOIN usuarios u ON l.autor_id = u.id
+      WHERE l.id = ?
+    `, [id]);
+
+    if (leis.length === 0) {
+      return res.status(404).json({ error: 'Lei não encontrada' });
+    }
+
+    res.json(leis[0]);
+  } catch (error) {
+    console.error('Erro ao buscar lei:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Atualizar lei (admin)
+app.put("/api/admin/leis/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { numero, ano, tipo, titulo, ementa, texto_completo, status, data_publicacao } = req.body;
+
+    if (!numero || !ano || !titulo || !tipo) {
+      return res.status(400).json({ error: 'Número, ano, título e tipo são obrigatórios' });
+    }
+
+    const db = await getConnection();
+    
+    // Verificar se já existe outra lei com mesmo número/ano/tipo
+    const [existing] = await db.execute(
+      'SELECT id FROM leis WHERE numero = ? AND ano = ? AND tipo = ? AND id != ?',
+      [numero, ano, tipo, id]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Já existe outra lei com este número, ano e tipo' });
+    }
+
+    const [result] = await db.execute(`
+      UPDATE leis 
+      SET numero = ?, ano = ?, tipo = ?, titulo = ?, ementa = ?, texto_completo = ?, status = ?, data_publicacao = ?
+      WHERE id = ?
+    `, [numero, ano, tipo, titulo, ementa || null, texto_completo || null, status, data_publicacao || null, id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Lei não encontrada' });
+    }
+
+    res.json({ message: 'Lei atualizada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao atualizar lei:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      res.status(400).json({ error: 'Já existe outra lei com este número, ano e tipo' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
+});
+
+// Excluir lei (admin)
+app.delete("/api/admin/leis/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getConnection();
+    
+    const [result] = await db.execute('DELETE FROM leis WHERE id = ?', [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Lei não encontrada' });
+    }
+
+    res.json({ message: 'Lei excluída com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir lei:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+//=============================================================================
+// ROTAS ADMIN - PROPOSTAS/PROPOSITURAS
+//=============================================================================
+
+// Listar todas as propostas (admin)
+app.get("/api/admin/propostas", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const db = await getConnection();
+    const [propostas] = await db.execute(`
+      SELECT p.*, u.nome as autor_nome
+      FROM propostas p
+      LEFT JOIN usuarios u ON p.autor_id = u.id
+      ORDER BY p.ano DESC, p.numero DESC
+    `);
+    res.json(propostas);
+  } catch (error) {
+    console.error('Erro ao buscar propostas:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Criar nova proposta (admin)
+app.post("/api/admin/propostas", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { numero, ano, tipo, titulo, resumo, justificativa, autor_id, status, data_protocolo } = req.body;
+
+    if (!numero || !ano || !titulo || !tipo || !autor_id) {
+      return res.status(400).json({ error: 'Número, ano, título, tipo e autor são obrigatórios' });
+    }
+
+    const db = await getConnection();
+    
+    // Verificar se já existe proposta com mesmo número/ano/tipo
+    const [existing] = await db.execute(
+      'SELECT id FROM propostas WHERE numero = ? AND ano = ? AND tipo = ?',
+      [numero, ano, tipo]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Já existe uma proposta com este número, ano e tipo' });
+    }
+
+    const [result] = await db.execute(`
+      INSERT INTO propostas (numero, ano, tipo, titulo, resumo, justificativa, autor_id, status, data_protocolo) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [numero, ano, tipo, titulo, resumo || null, justificativa || null, autor_id, status || 'protocolado', data_protocolo || null]);
+
+    res.status(201).json({ 
+      id: result.insertId,
+      message: 'Proposta criada com sucesso' 
+    });
+  } catch (error) {
+    console.error('Erro ao criar proposta:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      res.status(400).json({ error: 'Já existe uma proposta com este número, ano e tipo' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
+});
+
+// Buscar proposta específica (admin)
+app.get("/api/admin/propostas/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getConnection();
+    
+    const [propostas] = await db.execute(`
+      SELECT p.*, u.nome as autor_nome
+      FROM propostas p
+      LEFT JOIN usuarios u ON p.autor_id = u.id
+      WHERE p.id = ?
+    `, [id]);
+
+    if (propostas.length === 0) {
+      return res.status(404).json({ error: 'Proposta não encontrada' });
+    }
+
+    res.json(propostas[0]);
+  } catch (error) {
+    console.error('Erro ao buscar proposta:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Atualizar proposta (admin)
+app.put("/api/admin/propostas/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { numero, ano, tipo, titulo, resumo, justificativa, autor_id, status, data_protocolo } = req.body;
+
+    if (!numero || !ano || !titulo || !tipo || !autor_id) {
+      return res.status(400).json({ error: 'Número, ano, título, tipo e autor são obrigatórios' });
+    }
+
+    const db = await getConnection();
+    
+    // Verificar se já existe outra proposta com mesmo número/ano/tipo
+    const [existing] = await db.execute(
+      'SELECT id FROM propostas WHERE numero = ? AND ano = ? AND tipo = ? AND id != ?',
+      [numero, ano, tipo, id]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Já existe outra proposta com este número, ano e tipo' });
+    }
+
+    const [result] = await db.execute(`
+      UPDATE propostas 
+      SET numero = ?, ano = ?, tipo = ?, titulo = ?, resumo = ?, justificativa = ?, autor_id = ?, status = ?, data_protocolo = ?
+      WHERE id = ?
+    `, [numero, ano, tipo, titulo, resumo || null, justificativa || null, autor_id, status, data_protocolo || null, id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Proposta não encontrada' });
+    }
+
+    res.json({ message: 'Proposta atualizada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao atualizar proposta:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      res.status(400).json({ error: 'Já existe outra proposta com este número, ano e tipo' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
+});
+
+// Excluir proposta (admin)
+app.delete("/api/admin/propostas/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getConnection();
+    
+    const [result] = await db.execute('DELETE FROM propostas WHERE id = ?', [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Proposta não encontrada' });
+    }
+
+    res.json({ message: 'Proposta excluída com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir proposta:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+//=============================================================================
+// ROTAS ADMIN - ORDEM DO DIA
+//=============================================================================
+
+// Listar todas as sessões (admin)
+app.get("/api/admin/ordem-dia", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const db = await getConnection();
+    const [sessoes] = await db.execute(`
+      SELECT * FROM ordem_dia 
+      ORDER BY data_sessao DESC, hora_inicio DESC
+    `);
+    res.json(sessoes);
+  } catch (error) {
+    console.error('Erro ao buscar sessões:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Criar nova sessão (admin)
+app.post("/api/admin/ordem-dia", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { data_sessao, numero_sessao, tipo_sessao, hora_inicio, local, pauta, status } = req.body;
+
+    if (!data_sessao || !numero_sessao || !tipo_sessao) {
+      return res.status(400).json({ error: 'Data, número e tipo da sessão são obrigatórios' });
+    }
+
+    const db = await getConnection();
+    
+    const [result] = await db.execute(`
+      INSERT INTO ordem_dia (data_sessao, numero_sessao, tipo_sessao, hora_inicio, local, pauta, status) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [data_sessao, numero_sessao, tipo_sessao, hora_inicio || null, local || 'Plenário da Câmara Municipal', pauta || null, status || 'agendada']);
+
+    res.status(201).json({ 
+      id: result.insertId,
+      message: 'Sessão criada com sucesso' 
+    });
+  } catch (error) {
+    console.error('Erro ao criar sessão:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Buscar sessão específica (admin)
+app.get("/api/admin/ordem-dia/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getConnection();
+    
+    const [sessoes] = await db.execute(`
+      SELECT * FROM ordem_dia WHERE id = ?
+    `, [id]);
+
+    if (sessoes.length === 0) {
+      return res.status(404).json({ error: 'Sessão não encontrada' });
+    }
+
+    res.json(sessoes[0]);
+  } catch (error) {
+    console.error('Erro ao buscar sessão:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Atualizar sessão (admin)
+app.put("/api/admin/ordem-dia/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data_sessao, numero_sessao, tipo_sessao, hora_inicio, local, pauta, ata, status } = req.body;
+
+    if (!data_sessao || !numero_sessao || !tipo_sessao) {
+      return res.status(400).json({ error: 'Data, número e tipo da sessão são obrigatórios' });
+    }
+
+    const db = await getConnection();
+    
+    const [result] = await db.execute(`
+      UPDATE ordem_dia 
+      SET data_sessao = ?, numero_sessao = ?, tipo_sessao = ?, hora_inicio = ?, local = ?, pauta = ?, ata = ?, status = ?
+      WHERE id = ?
+    `, [data_sessao, numero_sessao, tipo_sessao, hora_inicio || null, local || 'Plenário da Câmara Municipal', pauta || null, ata || null, status, id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Sessão não encontrada' });
+    }
+
+    res.json({ message: 'Sessão atualizada com sucesso' });
+  } catch (error) {
+    console.error('Erro ao atualizar sessão:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Excluir sessão (admin)
+app.delete("/api/admin/ordem-dia/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getConnection();
+    
+    const [result] = await db.execute('DELETE FROM ordem_dia WHERE id = ?', [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Sessão não encontrada' });
+    }
+
+    res.json({ message: 'Sessão excluída com sucesso' });
+  } catch (error) {
+    console.error('Erro ao excluir sessão:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+//=============================================================================
+// ROTAS DE RELATÓRIOS
+//=============================================================================
+
+// Gerar relatório de atividades (admin)
+app.post("/api/admin/relatorios/atividades", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { usuario_id, data_inicio, data_fim } = req.body;
+
+    if (!usuario_id || !data_inicio || !data_fim) {
+      return res.status(400).json({ error: 'Usuário, data de início e data de fim são obrigatórios' });
+    }
+
+    const db = await getConnection();
+    
+    // Buscar usuário
+    const [usuario] = await db.execute(
+      'SELECT id, nome, email FROM usuarios WHERE id = ?',
+      [usuario_id]
+    );
+
+    if (usuario.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Buscar atividades (notícias, propostas, leis)
+    const [atividades] = await db.execute(`
+      SELECT 'noticia' as tipo, n.id, n.titulo, n.created_at as data_atividade, n.autor_id
+      FROM noticias n
+      WHERE n.autor_id = ? AND n.created_at BETWEEN ? AND ?
+      
+      UNION ALL
+      
+      SELECT 'proposta' as tipo, p.id, p.titulo, p.created_at as data_atividade, p.autor_id
+      FROM propostas p
+      WHERE p.autor_id = ? AND p.created_at BETWEEN ? AND ?
+      
+      UNION ALL
+      
+      SELECT 'lei' as tipo, l.id, l.titulo, l.data_publicacao as data_atividade, l.autor_id
+      FROM leis l
+      WHERE l.autor_id = ? AND l.data_publicacao BETWEEN ? AND ?
+      
+      ORDER BY data_atividade DESC
+    `, [usuario_id, data_inicio, data_fim, usuario_id, data_inicio, data_fim, usuario_id, data_inicio, data_fim]);
+
+    res.json({ 
+      usuario: usuario[0],
+      atividades 
+    });
+  } catch (error) {
+    console.error('Erro ao gerar relatório de atividades:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Gerar relatório de mensagens trocadas (admin)
+app.post("/api/admin/relatorios/mensagens", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { usuario_id, data_inicio, data_fim } = req.body;
+
+    if (!usuario_id || !data_inicio || !data_fim) {
+      return res.status(400).json({ error: 'Usuário, data de início e data de fim são obrigatórios' });
+    }
+
+    const db = await getConnection();
+    
+    // Buscar usuário
+    const [usuario] = await db.execute(
+      'SELECT id, nome, email FROM usuarios WHERE id = ?',
+      [usuario_id]
+    );
+
+    if (usuario.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Buscar mensagens enviadas e recebidas
+    const [mensagens] = await db.execute(`
+      SELECT m.*, 
+             u.nome as usuario_nome, 
+             u.email as usuario_email,
+             CASE 
+               WHEN m.remetente_id = ? THEN 'enviada'
+               WHEN m.destinatario_id = ? THEN 'recebida'
+             END as tipo_mensagem
+      FROM mensagens m
+      INNER JOIN usuarios u ON (m.remetente_id = u.id OR m.destinatario_id = u.id)
+      WHERE (m.remetente_id = ? OR m.destinatario_id = ?) 
+        AND m.data_envio BETWEEN ? AND ?
+      ORDER BY m.data_envio DESC
+    `, [usuario_id, usuario_id, usuario_id, usuario_id, data_inicio, data_fim]);
+
+    res.json({ 
+      usuario: usuario[0],
+      mensagens 
+    });
+  } catch (error) {
+    console.error('Erro ao gerar relatório de mensagens:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // Middleware para tratamento de erros
 app.use((error, req, res, next) => {
   console.error('Erro não tratado:', error);

@@ -28,15 +28,33 @@ export default function AppLayout({ children }) {
       {/* Sidebar */}
       <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
 
-      {/* Main content com margem para o header fixo */}
-      <main
-        style={{
-          marginTop: "60px", // altura do header
-          minHeight: "calc(100vh - 60px)"
-        }}
-      >
+          <div>
+            <div style={{ fontSize: 13, opacity: 0.9 }}>
+              Câmara Municipal
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>
+              Santana de Parnaíba
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginLeft: "auto",
+              fontSize: 12,
+              opacity: 0.9,
+              textAlign: "right",
+            }}
+          >
+            App oficial
+          </div>
+        </div>
+      </header>
+
+      <main>
         <Container>{children}</Container>
       </main>
+
+      <BottomNav />
     </div>
   );
 }

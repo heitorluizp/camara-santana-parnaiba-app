@@ -18,6 +18,9 @@ import OrdemDoDia from "./pages/OrdemDoDia";
 import AdminLogin from "./pages/admin/AdminLogin";
 import AdminNoticias from "./pages/admin/AdminNoticias";
 import AdminUsuarios from "./pages/admin/AdminUsuarios";
+import AdminLeis from "./pages/admin/AdminLeis";
+import AdminPropostas from "./pages/admin/AdminPropostas";
+import AdminOrdemDia from "./pages/admin/AdminOrdemDia";
 import Perfil from "./pages/Perfil";
 import Chat from "./pages/Chat";
 
@@ -189,6 +192,30 @@ export default function App() {
           element={
             <AdminRoute>
               <AdminUsuarios />
+            </AdminRoute>
+          } 
+        />
+        <Route 
+          path="/admin/leis" 
+          element={
+            <AdminRoute>
+              <AdminLeis />
+            </AdminRoute>
+          } 
+        />
+        <Route 
+          path="/admin/propostas" 
+          element={
+            <AdminRoute>
+              <AdminPropostas />
+            </AdminRoute>
+          } 
+        />
+        <Route 
+          path="/admin/ordem-dia" 
+          element={
+            <AdminRoute>
+              <AdminOrdemDia />
             </AdminRoute>
           } 
         />
