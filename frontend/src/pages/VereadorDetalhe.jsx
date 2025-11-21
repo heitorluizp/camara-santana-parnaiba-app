@@ -82,16 +82,37 @@ function VereadorDetalhe() {
           alignItems: "center",
         }}
       >
-        <img
-          src={vereador.foto}
-          alt={vereador.nome}
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: "50%",
-            objectFit: "cover",
-          }}
-        />
+        <div style={{
+          width: 56,
+          height: 56,
+          borderRadius: "50%",
+          backgroundColor: "#e5e7eb",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 24,
+          color: "#6b7280",
+          overflow: "hidden"
+        }}>
+          {vereador.foto ? (
+            <img
+              src={vereador.foto}
+              alt={vereador.nome}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.nextSibling.style.display = 'block';
+              }}
+            />
+          ) : null}
+          <span style={{ display: vereador.foto ? 'none' : 'block' }}>
+            👤
+          </span>
+        </div>
         <div>
           <h2 style={{ fontSize: 20, marginBottom: 4 }}>{vereador.nome}</h2>
           <p style={{ fontSize: 13 }}>{vereador.descricao}</p>

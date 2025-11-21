@@ -44,17 +44,38 @@ function Vereadores() {
               boxShadow: "0 1px 2px rgba(15, 23, 42, 0.08)",
             }}
           >
-            <img
-              src={v.foto}
-              alt={v.nome}
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: "50%",
-                objectFit: "cover",
-                flexShrink: 0,
-              }}
-            />
+            <div style={{
+              width: 48,
+              height: 48,
+              borderRadius: "50%",
+              backgroundColor: "#e5e7eb",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 20,
+              color: "#6b7280",
+              flexShrink: 0,
+              overflow: "hidden"
+            }}>
+              {v.foto ? (
+                <img
+                  src={v.foto}
+                  alt={v.nome}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'block';
+                  }}
+                />
+              ) : null}
+              <span style={{ display: v.foto ? 'none' : 'block' }}>
+                👤
+              </span>
+            </div>
             <div>
               <div
                 style={{

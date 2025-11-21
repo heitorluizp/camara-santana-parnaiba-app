@@ -17,8 +17,20 @@ function AdminUsuarios() {
     email: "",
     telefone: "",
     tipo: "cidadao",
-    senha: "123456" // senha padrão
+    senha: "123456", // senha padrão
+    foto_url: "",
+    // Campos específicos de vereador
+    descricao: "",
+    mandato_inicio: "",
+    mandato_fim: "",
+    partido: "",
+    dados_publicos: "",
+    contato_publico: "",
+    gabinete: "",
+    comissoes: ""
   });
+  const [fotoFile, setFotoFile] = useState(null);
+  const [uploadingFoto, setUploadingFoto] = useState(false);
 
   const tiposUsuario = [
     { value: "cidadao", label: "Cidadão" },
@@ -67,6 +79,89 @@ function AdminUsuarios() {
     setForm(prev => ({ ...prev, [name]: value }));
   }
 
+  function handleFotoChange(e) {
+    const file = e.target.files[0];
+    if (file) {
+      // Validar tamanho (2MB max)
+      if (file.size > 2 * 1024 * 1024) {
+        setError('A foto deve ter no máximo 2MB');
+        return;
+      }
+      
+      // Validar tipo
+      if (!file.type.startsWith('image/')) {
+        setError('Arquivo deve ser uma imagem');
+        return;
+      }
+      
+      setFotoFile(file);
+      setError('');
+    }
+  }
+
+  async function uploadFoto(usuarioId) {
+    if (!fotoFile) return null;
+
+    setUploadingFoto(true);
+    try {
+      const token = localStorage.getItem('app_token');
+      const formData = new FormData();
+      formData.append('foto', fotoFile);
+
+      const response = await fetch(`${API}/admin/usuarios/${usuarioId}/foto`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return result.foto_url;
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro no upload da foto');
+      }
+    } catch (err) {
+      throw err;
+    } finally {
+      setUploadingFoto(false);
+    }
+  }
+
+  async function salvarDadosVereador(usuarioId) {
+    if (form.tipo !== 'vereador') return;
+
+    try {
+      const token = localStorage.getItem('app_token');
+      const response = await fetch(`${API}/admin/usuarios/${usuarioId}/vereador`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          descricao: form.descricao,
+          mandato_inicio: form.mandato_inicio || null,
+          mandato_fim: form.mandato_fim || null,
+          partido: form.partido,
+          dados_publicos: form.dados_publicos,
+          contato_publico: form.contato_publico,
+          gabinete: form.gabinete,
+          comissoes: form.comissoes
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao salvar dados do vereador');
+      }
+    } catch (err) {
+      throw err;
+    }
+  }
+
   function handleNovo() {
     setForm({
       id: null,
@@ -74,22 +169,66 @@ function AdminUsuarios() {
       email: "",
       telefone: "",
       tipo: "cidadao",
-      senha: "123456"
+      senha: "123456",
+      foto_url: "",
+      // Campos específicos de vereador
+      descricao: "",
+      mandato_inicio: "",
+      mandato_fim: "",
+      partido: "",
+      dados_publicos: "",
+      contato_publico: "",
+      gabinete: "",
+      comissoes: ""
     });
+    setFotoFile(null);
     setShowForm(true);
     setError("");
     setSuccess("");
   }
 
-  function handleEdit(usuario) {
-    setForm({
-      id: usuario.id,
-      nome: usuario.nome,
-      email: usuario.email,
-      telefone: usuario.telefone || "",
-      tipo: usuario.tipo,
-      senha: "123456" // manter senha padrão na edição
-    });
+  async function handleEdit(usuario) {
+    try {
+      // Buscar dados completos do usuário
+      const token = localStorage.getItem('app_token');
+      const response = await fetch(`${API}/admin/usuarios/${usuario.id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const dadosCompletos = await response.json();
+        
+        setForm({
+          id: dadosCompletos.id,
+          nome: dadosCompletos.nome,
+          email: dadosCompletos.email,
+          telefone: dadosCompletos.telefone || "",
+          tipo: dadosCompletos.tipo,
+          senha: "123456", // manter senha padrão na edição
+          foto_url: dadosCompletos.foto_url || "",
+          // Campos específicos de vereador
+          descricao: dadosCompletos.dadosVereador?.descricao || "",
+          mandato_inicio: dadosCompletos.dadosVereador?.mandato_inicio || "",
+          mandato_fim: dadosCompletos.dadosVereador?.mandato_fim || "",
+          partido: dadosCompletos.dadosVereador?.partido || "",
+          dados_publicos: dadosCompletos.dadosVereador?.dados_publicos || "",
+          contato_publico: dadosCompletos.dadosVereador?.contato_publico || "",
+          gabinete: dadosCompletos.dadosVereador?.gabinete || "",
+          comissoes: dadosCompletos.dadosVereador?.comissoes || ""
+        });
+        setFotoFile(null);
+      } else {
+        setError('Erro ao carregar dados do usuário');
+        return;
+      }
+    } catch (err) {
+      setError('Erro de conexão');
+      return;
+    }
+    
     setShowForm(true);
     setError("");
     setSuccess("");
@@ -145,6 +284,7 @@ function AdminUsuarios() {
       const method = form.id ? 'PUT' : 'POST';
       const url = form.id ? `${API}/admin/usuarios/${form.id}` : `${API}/admin/usuarios`;
       
+      // 1. Primeiro salvar/atualizar o usuário básico
       const response = await fetch(url, {
         method,
         headers: {
@@ -160,14 +300,40 @@ function AdminUsuarios() {
         })
       });
       
-      if (response.ok) {
-        setSuccess(form.id ? 'Usuário atualizado com sucesso' : 'Usuário criado com sucesso');
-        setShowForm(false);
-        await carregarUsuarios();
-      } else {
+      if (!response.ok) {
         const error = await response.json();
         setError(error.error || 'Erro ao salvar usuário');
+        return;
       }
+
+      const result = await response.json();
+      const usuarioId = form.id || result.id;
+
+      // 2. Se houver foto para upload, fazer upload
+      if (fotoFile) {
+        try {
+          await uploadFoto(usuarioId);
+        } catch (err) {
+          setError(`Usuário salvo, mas erro no upload da foto: ${err.message}`);
+          setSaving(false);
+          return;
+        }
+      }
+
+      // 3. Se for vereador, salvar dados específicos
+      if (form.tipo === 'vereador') {
+        try {
+          await salvarDadosVereador(usuarioId);
+        } catch (err) {
+          setError(`Usuário salvo, mas erro nos dados do vereador: ${err.message}`);
+          setSaving(false);
+          return;
+        }
+      }
+
+      setSuccess(form.id ? 'Usuário atualizado com sucesso' : 'Usuário criado com sucesso');
+      setShowForm(false);
+      await carregarUsuarios();
     } catch (err) {
       setError('Erro de conexão');
       console.error(err);
@@ -274,7 +440,7 @@ function AdminUsuarios() {
           <form onSubmit={handleSubmit} style={{ display: "grid", gap: 16 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
               <div>
-                <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600 }}>
+                <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600, color: "#374151" }}>
                   Nome Completo *
                 </label>
                 <input
@@ -294,7 +460,7 @@ function AdminUsuarios() {
               </div>
               
               <div>
-                <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600 }}>
+                <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600, color: "#374151" }}>
                   Email *
                 </label>
                 <input
@@ -317,7 +483,7 @@ function AdminUsuarios() {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
               <div>
-                <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600 }}>
+                <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600, color: "#374151" }}>
                   Telefone
                 </label>
                 <input
@@ -336,7 +502,7 @@ function AdminUsuarios() {
               </div>
 
               <div>
-                <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600 }}>
+                <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600, color: "#374151" }}>
                   Tipo de Usuário *
                 </label>
                 <select
@@ -362,7 +528,7 @@ function AdminUsuarios() {
               </div>
 
               <div>
-                <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600 }}>
+                <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600, color: "#374151" }}>
                   Senha Padrão
                 </label>
                 <input
@@ -384,6 +550,250 @@ function AdminUsuarios() {
                 </div>
               </div>
             </div>
+
+            {/* Upload de foto de perfil */}
+            <div>
+              <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                📷 Foto de Perfil
+              </label>
+              <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                {form.foto_url && (
+                  <div style={{ position: "relative" }}>
+                    <img 
+                      src={form.foto_url} 
+                      alt="Foto atual" 
+                      style={{ 
+                        width: 80, 
+                        height: 80, 
+                        borderRadius: "50%", 
+                        objectFit: "cover",
+                        border: "3px solid #e5e7eb",
+                        backgroundColor: "#f3f4f6"
+                      }} 
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                    <div style={{ 
+                      fontSize: 11, 
+                      color: "#16a34a", 
+                      textAlign: "center", 
+                      marginTop: 4,
+                      fontWeight: 500
+                    }}>
+                      Foto atual
+                    </div>
+                  </div>
+                )}
+                <div style={{ flex: 1 }}>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFotoChange}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 6,
+                      border: "2px dashed #d1d5db",
+                      fontSize: 14,
+                      backgroundColor: "#fff",
+                      cursor: "pointer"
+                    }}
+                  />
+                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>
+                    📎 Máximo 2MB • Formatos: JPG, PNG, GIF
+                    {fotoFile && (
+                      <div style={{ color: "#16a34a", marginTop: 2 }}>
+                        ✅ Arquivo selecionado: {fotoFile.name}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Campos específicos de vereador */}
+            {form.tipo === 'vereador' && (
+              <>
+                <div style={{ 
+                  borderTop: "1px solid #e5e7eb", 
+                  marginTop: 20, 
+                  paddingTop: 20,
+                  marginBottom: 10
+                }}>
+                  <h4 style={{ margin: 0, fontSize: 16, color: "#374151", marginBottom: 16 }}>
+                    📋 Dados Específicos do Vereador
+                  </h4>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                      Descrição/Biografia
+                    </label>
+                    <textarea
+                      name="descricao"
+                      placeholder="Breve descrição ou biografia do vereador"
+                      value={form.descricao}
+                      onChange={handleChange}
+                      rows={3}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: 6,
+                        border: "1px solid #d1d5db",
+                        fontSize: 14,
+                        resize: "vertical",
+                        fontFamily: "inherit"
+                      }}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                      Partido
+                    </label>
+                    <input
+                      name="partido"
+                      placeholder="Ex: PSDB, PT, MDB..."
+                      value={form.partido}
+                      onChange={handleChange}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: 6,
+                        border: "1px solid #d1d5db",
+                        fontSize: 14
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                      Gabinete
+                    </label>
+                    <input
+                      name="gabinete"
+                      placeholder="Ex: Gabinete 15"
+                      value={form.gabinete}
+                      onChange={handleChange}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: 6,
+                        border: "1px solid #d1d5db",
+                        fontSize: 14
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                      Mandato Início
+                    </label>
+                    <input
+                      name="mandato_inicio"
+                      type="date"
+                      value={form.mandato_inicio}
+                      onChange={handleChange}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: 6,
+                        border: "1px solid #d1d5db",
+                        fontSize: 14
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                      Mandato Fim
+                    </label>
+                    <input
+                      name="mandato_fim"
+                      type="date"
+                      value={form.mandato_fim}
+                      onChange={handleChange}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: 6,
+                        border: "1px solid #d1d5db",
+                        fontSize: 14
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                      Contato Público
+                    </label>
+                    <input
+                      name="contato_publico"
+                      placeholder="Email ou telefone público"
+                      value={form.contato_publico}
+                      onChange={handleChange}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: 6,
+                        border: "1px solid #d1d5db",
+                        fontSize: 14
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                      Comissões
+                    </label>
+                    <input
+                      name="comissoes"
+                      placeholder="Ex: Educação, Saúde..."
+                      value={form.comissoes}
+                      onChange={handleChange}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: 6,
+                        border: "1px solid #d1d5db",
+                        fontSize: 14
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                    Dados Públicos do Mandato
+                  </label>
+                  <textarea
+                    name="dados_publicos"
+                    placeholder="Informações detalhadas sobre o mandato, projetos, histórico político..."
+                    value={form.dados_publicos}
+                    onChange={handleChange}
+                    rows={4}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 6,
+                      border: "1px solid #d1d5db",
+                      fontSize: 14,
+                      resize: "vertical",
+                      fontFamily: "inherit"
+                    }}
+                  />
+                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+                    Essas informações aparecerão na página pública do vereador
+                  </div>
+                </div>
+              </>
+            )}
 
             <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
               <button

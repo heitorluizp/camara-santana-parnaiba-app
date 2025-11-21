@@ -74,10 +74,43 @@ const storage = multer.diskStorage({
   }
 });
 
+// Configuração específica para fotos de perfil de vereadores
+const perfilStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = path.join(__dirname, '../uploads/perfil');
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    // Gerar nome único: timestamp + nome original limpo
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    const name = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '').replace(ext, '');
+    cb(null, `vereador-${name}-${uniqueSuffix}${ext}`);
+  }
+});
+
 const upload = multer({ 
   storage: storage,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB
+  },
+  fileFilter: function (req, file, cb) {
+    // Aceitar apenas imagens
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('O arquivo deve ser uma imagem (jpg, png, gif, etc.)'), false);
+    }
+  }
+});
+
+const uploadPerfil = multer({ 
+  storage: perfilStorage,
+  limits: {
+    fileSize: 2 * 1024 * 1024, // 2MB
   },
   fileFilter: function (req, file, cb) {
     // Aceitar apenas imagens
@@ -769,6 +802,143 @@ app.delete("/api/admin/usuarios/:id", authenticateToken, requireAdmin, async (re
     res.json({ message: 'Usuário excluído com sucesso' });
   } catch (error) {
     console.error('Erro ao excluir usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Upload de foto de perfil de usuário
+app.post("/api/admin/usuarios/:id/foto", authenticateToken, requireAdmin, uploadPerfil.single('foto'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+    }
+
+    const fotoUrl = `http://localhost:3000/uploads/perfil/${req.file.filename}`;
+    
+    const db = await getConnection();
+    const [result] = await db.execute(
+      'UPDATE usuarios SET foto_url = ? WHERE id = ?',
+      [fotoUrl, id]
+    );
+
+    if (result.affectedRows === 0) {
+      // Remover arquivo se usuário não foi encontrado
+      fs.unlinkSync(req.file.path);
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    res.json({ 
+      message: 'Foto atualizada com sucesso',
+      foto_url: fotoUrl
+    });
+  } catch (error) {
+    console.error('Erro ao fazer upload da foto:', error);
+    // Remover arquivo em caso de erro
+    if (req.file) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Buscar dados completos de um usuário (incluindo dados de vereador se aplicável)
+app.get("/api/admin/usuarios/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await getConnection();
+    
+    // Buscar dados do usuário
+    const [usuario] = await db.execute(`
+      SELECT id, nome, email, telefone, tipo, foto_url, created_at as createdAt, updated_at as updatedAt
+      FROM usuarios 
+      WHERE id = ?
+    `, [id]);
+
+    if (usuario.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    let dadosCompletos = usuario[0];
+
+    // Se for vereador, buscar dados específicos
+    if (usuario[0].tipo === 'vereador') {
+      const [vereador] = await db.execute(`
+        SELECT descricao, mandato_inicio, mandato_fim, partido, dados_publicos, 
+               contato_publico, gabinete, comissoes
+        FROM vereadores 
+        WHERE usuario_id = ?
+      `, [id]);
+
+      if (vereador.length > 0) {
+        dadosCompletos.dadosVereador = vereador[0];
+      }
+    }
+
+    res.json(dadosCompletos);
+  } catch (error) {
+    console.error('Erro ao buscar usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Atualizar dados específicos de vereador
+app.put("/api/admin/usuarios/:id/vereador", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { descricao, mandato_inicio, mandato_fim, partido, dados_publicos, contato_publico, gabinete, comissoes } = req.body;
+
+    // Formatar datas para MySQL (apenas YYYY-MM-DD)
+    const formatarData = (data) => {
+      if (!data) return null;
+      const d = new Date(data);
+      return d.toISOString().split('T')[0]; // Pega apenas a parte YYYY-MM-DD
+    };
+
+    const mandatoInicioFormatado = formatarData(mandato_inicio);
+    const mandatoFimFormatado = formatarData(mandato_fim);
+
+    const db = await getConnection();
+    
+    // Verificar se o usuário existe e é vereador
+    const [usuario] = await db.execute(
+      'SELECT id, tipo FROM usuarios WHERE id = ?',
+      [id]
+    );
+
+    if (usuario.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    if (usuario[0].tipo !== 'vereador') {
+      return res.status(400).json({ error: 'Usuário não é um vereador' });
+    }
+
+    // Verificar se já existe registro na tabela vereadores
+    const [vereadorExistente] = await db.execute(
+      'SELECT id FROM vereadores WHERE usuario_id = ?',
+      [id]
+    );
+
+    if (vereadorExistente.length === 0) {
+      // Inserir novo registro
+      await db.execute(`
+        INSERT INTO vereadores (usuario_id, descricao, mandato_inicio, mandato_fim, partido, dados_publicos, contato_publico, gabinete, comissoes) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [id, descricao, mandatoInicioFormatado, mandatoFimFormatado, partido, dados_publicos, contato_publico, gabinete, comissoes]);
+    } else {
+      // Atualizar registro existente
+      await db.execute(`
+        UPDATE vereadores 
+        SET descricao = ?, mandato_inicio = ?, mandato_fim = ?, partido = ?, dados_publicos = ?, contato_publico = ?, gabinete = ?, comissoes = ?
+        WHERE usuario_id = ?
+      `, [descricao, mandatoInicioFormatado, mandatoFimFormatado, partido, dados_publicos, contato_publico, gabinete, comissoes, id]);
+    }
+
+    res.json({ message: 'Dados do vereador atualizados com sucesso' });
+  } catch (error) {
+    console.error('Erro ao atualizar dados do vereador:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
